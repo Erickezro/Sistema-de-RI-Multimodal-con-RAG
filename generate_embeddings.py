@@ -1,0 +1,88 @@
+"""
+Etapa 2 - Generación de embeddings con CLIP
+
+Genera un embedding multimodal por producto (combinando imagen + texto)
+y una función reutilizable para embeddear queries del usuario.
+
+Requisitos:
+    pip install open_clip_torch torch pillow pandas numpy tqdm
+
+Uso:
+    python generate_embeddings.py
+"""
+
+import torch
+import open_clip
+import pandas as pd
+import numpy as np
+from PIL import Image
+from tqdm import tqdm
+
+
+# Cargar el modelo CLIP
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+model, _, preprocess = open_clip.create_model_and_transforms("ViT-B-32", pretrained="laion2b_s34b_b79k")
+tokenizer = open_clip.get_tokenizer("ViT-B-32")
+model = model.to(device).eval()
+
+print(f"Modelo CLIP cargado en: {device}")
+
+
+# Funciones de embedding (texto e imagen)
+@torch.no_grad()
+def embed_text(text: str):
+    tokens = tokenizer([text]).to(device)
+    embedding = model.encode_text(tokens)
+    embedding = embedding / embedding.norm(dim=-1, keepdim=True)   # normalizar
+    return embedding.cpu().numpy()[0]
+
+
+@torch.no_grad()
+def embed_image(image_path: str):
+    img = Image.open(image_path).convert("RGB")
+    img_t = preprocess(img).unsqueeze(0).to(device)
+    embedding = model.encode_image(img_t)
+    embedding = embedding / embedding.norm(dim=-1, keepdim=True)
+    return embedding.cpu().numpy()[0]
+
+
+# ------------------------------------------------------------------
+# Generar embeddings para todos los productos del corpus
+#    (un vector de TEXTO y un vector de IMAGEN por producto,
+#    guardados por separado y se combinan en tiempo de búsqueda, no aquí)
+# ------------------------------------------------------------------
+products = pd.read_csv("data/processed/products.csv")
+
+product_ids = []
+text_embeddings = []
+image_embeddings = []
+
+for _, row in tqdm(products.iterrows(), total=len(products), desc="Embeddings de productos"):
+    try:
+        text = f"{row['product_title']} {row['product_description']}".strip()
+        text_vec = embed_text(text)
+        img_vec = embed_image(row["image_path"])
+
+        product_ids.append(row["product_id"])
+        text_embeddings.append(text_vec)
+        image_embeddings.append(img_vec)
+    except Exception as e:
+        print(f"  falló {row['product_id']}: {e}")
+        continue
+
+text_embeddings = np.vstack(text_embeddings)
+image_embeddings = np.vstack(image_embeddings)
+print(f"\nEmbeddings de texto: {text_embeddings.shape}")
+print(f"Embeddings de imagen: {image_embeddings.shape}")
+
+# ------------------------------------------------------------------
+#  Guardar en disco (despues se guardaran en la DB vectorial)
+# ------------------------------------------------------------------
+np.save("data/processed/product_embeddings_text.npy", text_embeddings)
+np.save("data/processed/product_embeddings_image.npy", image_embeddings)
+pd.DataFrame({"product_id": product_ids}).to_csv(
+    "data/processed/product_embedding_ids.csv", index=False
+)
+print("Guardado: product_embeddings_text.npy, product_embeddings_image.npy, "
+      "product_embedding_ids.csv")
