@@ -60,7 +60,7 @@ image_embeddings = []
 
 for _, row in tqdm(products.iterrows(), total=len(products), desc="Embeddings de productos"):
     try:
-        text = f"{row['product_title']} {row['product_description']}".strip()
+        text = row["text"]
         text_vec = embed_text(text)
         img_vec = embed_image(row["image_path"])
 
@@ -86,3 +86,10 @@ pd.DataFrame({"product_id": product_ids}).to_csv(
 )
 print("Guardado: product_embeddings_text.npy, product_embeddings_image.npy, "
       "product_embedding_ids.csv")
+
+print(len(product_ids))
+print(text_embeddings.shape)
+print(image_embeddings.shape)
+
+print(np.linalg.norm(text_embeddings[0]))
+print(np.linalg.norm(image_embeddings[0]))
