@@ -47,49 +47,48 @@ def embed_image(image_path: str):
     return embedding.cpu().numpy()[0]
 
 
-# ------------------------------------------------------------------
-# Generar embeddings para todos los productos del corpus
-#    (un vector de TEXTO y un vector de IMAGEN por producto,
-#    guardados por separado y se combinan en tiempo de búsqueda, no aquí)
-# ------------------------------------------------------------------
-products = pd.read_csv("data/processed/products.csv")
+if __name__ == "__main__":
+    # ------------------------------------------------------------------
+    # Generar embeddings para todos los productos del corpus
+    # ------------------------------------------------------------------
+    products = pd.read_csv("data/processed/products.csv")
 
-product_ids = []
-text_embeddings = []
-image_embeddings = []
+    product_ids = []
+    text_embeddings = []
+    image_embeddings = []
 
-for _, row in tqdm(products.iterrows(), total=len(products), desc="Embeddings de productos"):
-    try:
-        text = row["text"]
-        text_vec = embed_text(text)
-        img_vec = embed_image(row["image_path"])
+    for _, row in tqdm(products.iterrows(), total=len(products), desc="Embeddings de productos"):
+        try:
+            text = row["text"]
+            text_vec = embed_text(text)
+            img_vec = embed_image(row["image_path"])
 
-        product_ids.append(row["product_id"])
-        text_embeddings.append(text_vec)
-        image_embeddings.append(img_vec)
-    except Exception as e:
-        print(f"  falló {row['product_id']}: {e}")
-        continue
+            product_ids.append(row["product_id"])
+            text_embeddings.append(text_vec)
+            image_embeddings.append(img_vec)
+        except Exception as e:
+            print(f"  falló {row['product_id']}: {e}")
+            continue
 
-text_embeddings = np.vstack(text_embeddings)
-image_embeddings = np.vstack(image_embeddings)
-print(f"\nEmbeddings de texto: {text_embeddings.shape}")
-print(f"Embeddings de imagen: {image_embeddings.shape}")
+    text_embeddings = np.vstack(text_embeddings)
+    image_embeddings = np.vstack(image_embeddings)
+    print(f"\nEmbeddings de texto: {text_embeddings.shape}")
+    print(f"Embeddings de imagen: {image_embeddings.shape}")
 
-# ------------------------------------------------------------------
-#  Guardar en disco (despues se guardaran en la DB vectorial)
-# ------------------------------------------------------------------
-np.save("data/processed/product_embeddings_text.npy", text_embeddings)
-np.save("data/processed/product_embeddings_image.npy", image_embeddings)
-pd.DataFrame({"product_id": product_ids}).to_csv(
-    "data/processed/product_embedding_ids.csv", index=False
-)
-print("Guardado: product_embeddings_text.npy, product_embeddings_image.npy, "
-      "product_embedding_ids.csv")
+    # ------------------------------------------------------------------
+    #  Guardar en disco
+    # ------------------------------------------------------------------
+    np.save("data/processed/product_embeddings_text.npy", text_embeddings)
+    np.save("data/processed/product_embeddings_image.npy", image_embeddings)
+    pd.DataFrame({"product_id": product_ids}).to_csv(
+        "data/processed/product_embedding_ids.csv", index=False
+    )
+    print("Guardado: product_embeddings_text.npy, product_embeddings_image.npy, "
+          "product_embedding_ids.csv")
 
-print(len(product_ids))
-print(text_embeddings.shape)
-print(image_embeddings.shape)
+    print(len(product_ids))
+    print(text_embeddings.shape)
+    print(image_embeddings.shape)
 
-print(np.linalg.norm(text_embeddings[0]))
-print(np.linalg.norm(image_embeddings[0]))
+    print(np.linalg.norm(text_embeddings[0]))
+    print(np.linalg.norm(image_embeddings[0]))
