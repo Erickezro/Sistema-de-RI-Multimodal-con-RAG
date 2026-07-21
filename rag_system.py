@@ -11,10 +11,10 @@ from retrieve import search
 # Cargar variables de entorno
 load_dotenv()
  
-# Configurar cliente de OpenRouter (NO usar OPENAI_API_KEY)
-api_key = os.getenv("OpenRouter_API_KEY", "GEMINI_API_KEY")
+# Cliente de OpenRouter
+api_key = os.getenv("OpenRouter_API_KEY") # os.getenv("GEMINI_API_KEY")
 if not api_key:
-    raise ValueError("GEMINI_API_KEY no encontrada. Crea un archivo .env con ella.")
+    raise ValueError("OPENROUTER_API_KEY no encontrada.")
  
 client = OpenAI(
     # base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
