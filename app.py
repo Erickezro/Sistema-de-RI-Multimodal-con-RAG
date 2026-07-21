@@ -91,6 +91,7 @@ with st.sidebar:
         options=["text", "image"],
         format_func=lambda x: "📝 Texto" if x == "text" else "🖼️ Imagen",
         horizontal=True,
+        help="Con 'Imagen' podrás subir una foto de referencia en vez de escribir texto.",
     )
  
     st.markdown("---")
@@ -153,8 +154,9 @@ def render_evidences(docs, msg_key):
                     )
                     score = doc.get("score_final", 0.0)
                     st.markdown(f'<span class="score-badge">score: {score:.4f}</span>', unsafe_allow_html=True)
-                    if doc.get("descripcion"):
-                        st.write(str(doc["descripcion"])[:180] + "...")
+                    descripcion = doc.get("descripcion", "")
+                    if descripcion and str(descripcion).lower() != "nan":
+                        st.write(str(descripcion)[:180] + "...")
                 with col3:
                     stats = get_stats(pid)
                     btn_col1, btn_col2 = st.columns(2)
@@ -180,6 +182,8 @@ if "messages" not in st.session_state:
 # Mostrar mensajes anteriores
 for msg_idx, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
+        if msg.get("user_image"):
+            st.image(msg["user_image"], width=180)
         st.markdown(msg["content"])
         if msg.get("evidences"):
             render_evidences(msg["evidences"], msg_key=f"hist{msg_idx}")
@@ -187,15 +191,55 @@ for msg_idx, msg in enumerate(st.session_state.messages):
 # ------------------------------------------------------------------
 # Input del usuario
 # ------------------------------------------------------------------
-if prompt := st.chat_input("Escribe tu consulta sobre productos..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# ------------------------------------------------------------------
+# Input del usuario (texto o imagen, según el modo elegido en el sidebar)
+# ------------------------------------------------------------------
+prompt = None
+image_query_path = None
+display_content = None
+ 
+if query_type == "text":
+    prompt = st.chat_input("Escribe tu consulta sobre productos...")
+    if prompt:
+        display_content = prompt
+ 
+else:  # query_type == "image"
+    uploaded_file = st.file_uploader(
+        "Sube una imagen de referencia (ej. una foto del producto que buscas)",
+        type=["jpg", "jpeg", "png"],
+    )
+    if uploaded_file is not None:
+        st.image(uploaded_file, width=180, caption="Imagen a buscar")
+        if st.button("🔍 Buscar productos similares", type="primary"):
+            os.makedirs("data/tmp_uploads", exist_ok=True)
+            # nombre único para no pisar archivos de otras búsquedas en la misma sesión
+            temp_path = os.path.join(
+                "data/tmp_uploads",
+                f"{len(st.session_state.messages)}_{uploaded_file.name}"
+            )
+            with open(temp_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            image_query_path = temp_path
+            display_content = f"🖼️ Imagen subida: {uploaded_file.name}"
+ 
+if prompt or image_query_path:
+    actual_query = prompt if query_type == "text" else image_query_path
+ 
+    # Mensaje del usuario
+    st.session_state.messages.append({
+        "role": "user",
+        "content": display_content,
+        "user_image": image_query_path if query_type == "image" else None,
+    })
     with st.chat_message("user"):
-        st.markdown(prompt)
+        if image_query_path:
+            st.image(image_query_path, width=180)
+        st.markdown(display_content)
  
     with st.chat_message("assistant"):
         with st.spinner("Recuperando evidencia y generando respuesta..."):
             try:
-                response, docs = ask(prompt, query_type=query_type, top_k=top_k)
+                response, docs = ask(actual_query, query_type=query_type, top_k=top_k)
             except Exception as e:
                 response = f"⚠️ Ocurrió un error al procesar la consulta: {e}"
                 docs = []

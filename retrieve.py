@@ -78,6 +78,6 @@ if __name__ == "__main__":
         
         
     # Prueba rápida: búsqueda por imagen
-    # print("\n--- Búsqueda por imagen ---")
-    # for r in search("data/raw/images/B00FTCMR96.jpg", query_type="image", top_k=5):
-    #     print(f"[{r['score_final']}] {r['titulo']} (texto={r['score_texto']}, imagen={r['score_imagen']})")
+    print("\n--- Búsqueda por imagen ---")
+    for r in search("data/raw/images/B00FTCMR96.jpg", query_type="image", top_k=5):
+        print(f"[{r['score_final']}] {r['titulo']} (texto={r['score_texto']}, imagen={r['score_imagen']})")
