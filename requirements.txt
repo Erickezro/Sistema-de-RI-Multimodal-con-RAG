@@ -1,0 +1,25 @@
+# --- PyTorch con soporte CUDA 12.8 (RTX 5070) ---
+# Instalar ANTES estas 3 con el índice especial, luego el resto normal:
+# pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 torchaudio==2.11.0+cu128 --index-url https://download.pytorch.org/whl/cu128
+ 
+# --- Núcleo del proyecto (embeddings CLIP) ---
+open_clip_torch==3.3.0
+pillow==12.2.0
+numpy==2.4.6
+pandas==3.0.3
+pyarrow<25,>=24
+tqdm==4.68.3
+ 
+# --- Lectura/escritura de datos ---
+openpyxl==3.1.5
+xlrd==2.0.2
+xlsxwriter==3.2.9
+ 
+# --- Base de datos vectorial ---
+pymilvus==3.0.0
+ 
+# --- App / interfaz ---
+streamlit==1.59.2
+ 
+# --- Utilidades ---
+python-dotenv==1.2.2
