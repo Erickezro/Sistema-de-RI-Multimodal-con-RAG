@@ -2,11 +2,14 @@
 Sistema RAG multimodal con ChromaDB y OpenRouter (modelos gratuitos)
 """
 import base64
+import logging
 import mimetypes
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
 from retrieve import search
+
+logger = logging.getLogger(__name__)
 
 # Cargar variables de entorno
 load_dotenv()
@@ -112,23 +115,25 @@ REGLAS IMPORTANTES:
             content_blocks.append({"type": "image_url", "image_url": {"url": img_url}})
             images_added += 1
 
-    try:
-        last_error = None
-        for model_name in FALLBACK_MODELS:
-            try:
-                response = client.chat.completions.create(
-                    model=model_name,
-                    messages=[{"role": "user", "content": content_blocks}],
-                    temperature=0.3,
-                    max_tokens=800
-                )
-                return response.choices[0].message.content
-            except Exception as e:
-                last_error = e
-                continue  # probar el siguiente modelo de la lista
-        return f"Error al generar respuesta (todos los modelos gratuitos fallaron): {last_error}"
-    except Exception as e:
-        return f"Error al generar respuesta: {e}"
+    last_error = None
+    for model_name in FALLBACK_MODELS:
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": content_blocks}],
+                temperature=0.3,
+                max_tokens=800
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            # No silenciamos cada fallo: lo dejamos en el log para poder
+            # distinguir un rate limit puntual de un error de configuración.
+            last_error = e
+            logger.warning("El modelo %s falló al generar respuesta: %s", model_name, e)
+            continue  # probar el siguiente modelo de la lista
+
+    logger.error("Todos los modelos gratuitos fallaron al generar respuesta: %s", last_error)
+    return f"Error al generar respuesta (todos los modelos gratuitos fallaron): {last_error}"
 
 
 def resolve_image_url(image_path):
@@ -151,8 +156,10 @@ def encode_image(image_path):
         with open(image_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode("utf-8")
         return f"data:{mime_type};base64,{b64}"
-    except Exception as e:
-        print(f"Error codificando imagen {image_path}: {e}")
+    except OSError as e:
+        # La imagen simplemente se omite del contexto del LLM, pero dejamos
+        # rastro en el log en vez de tragarnos el error en silencio.
+        logger.warning("No se pudo codificar la imagen %s: %s", image_path, e)
         return None
 
 

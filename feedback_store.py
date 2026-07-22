@@ -10,8 +10,11 @@ si el corpus creciera mucho convendría moverlo a una tabla en la BD vectorial).
 """
  
 import json
+import logging
 import os
- 
+
+logger = logging.getLogger(__name__)
+
 FEEDBACK_PATH = "data/feedback.json"
  
 # Cuánto pesa cada "voto neto" en el score final, y el tope para que
@@ -27,25 +30,44 @@ def _ensure_dir():
 def load_feedback() -> dict:
     if not os.path.exists(FEEDBACK_PATH):
         return {}
-    with open(FEEDBACK_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(FEEDBACK_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        # El feedback es una señal auxiliar (no crítica): si el archivo
+        # está corrupto o ilegible NO tumbamos toda la app/búsqueda por
+        # eso. Degradamos a "sin feedback" pero dejamos rastro del error.
+        logger.warning("No se pudo leer %s (%s); se ignora el feedback acumulado.",
+                       FEEDBACK_PATH, e)
+        return {}
+    if not isinstance(data, dict):
+        logger.warning("%s no contiene un objeto JSON válido; se ignora.", FEEDBACK_PATH)
+        return {}
+    return data
  
  
 def save_feedback(data: dict):
     _ensure_dir()
-    with open(FEEDBACK_PATH, "w", encoding="utf-8") as f:
+    # Escritura atómica: escribimos a un archivo temporal y luego lo
+    # renombramos. Así una escritura interrumpida (ej. un rerun de
+    # Streamlit a mitad de guardado) nunca deja el JSON corrupto.
+    tmp_path = f"{FEEDBACK_PATH}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, FEEDBACK_PATH)
  
  
 def add_feedback(product_id: str, liked: bool):
     """Registra un 👍 (liked=True) o 👎 (liked=False) para un producto."""
     data = load_feedback()
-    entry = data.get(product_id, {"likes": 0, "dislikes": 0})
+    entry = data.get(product_id) or {}
+    likes = int(entry.get("likes", 0))
+    dislikes = int(entry.get("dislikes", 0))
     if liked:
-        entry["likes"] += 1
+        likes += 1
     else:
-        entry["dislikes"] += 1
-    data[product_id] = entry
+        dislikes += 1
+    data[product_id] = {"likes": likes, "dislikes": dislikes}
     save_feedback(data)
  
  
@@ -60,7 +82,7 @@ def get_boost(product_id: str, data: dict | None = None) -> float:
     entry = data.get(product_id)
     if not entry:
         return 0.0
-    net = entry["likes"] - entry["dislikes"]
+    net = int(entry.get("likes", 0)) - int(entry.get("dislikes", 0))
     boost = ALPHA * net
     return max(-CAP, min(CAP, boost))
  

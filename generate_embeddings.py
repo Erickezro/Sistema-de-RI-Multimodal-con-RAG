@@ -11,12 +11,17 @@ Uso:
     python generate_embeddings.py
 """
 
+import logging
+
 import torch
 import open_clip
 import pandas as pd
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 
 # Cargar el modelo CLIP
@@ -67,8 +72,17 @@ if __name__ == "__main__":
             text_embeddings.append(text_vec)
             image_embeddings.append(img_vec)
         except Exception as e:
-            print(f"  falló {row['product_id']}: {e}")
+            logger.warning("Falló el embedding de %s: %s", row["product_id"], e)
             continue
+
+    n_failed = len(products) - len(product_ids)
+    if n_failed:
+        logger.warning("%d de %d productos no se pudieron embeddear.", n_failed, len(products))
+    if not product_ids:
+        raise RuntimeError(
+            "Ningún producto pudo embeddearse; revisa data/processed/products.csv "
+            "y las rutas de imágenes (data/raw/images). No hay nada que guardar."
+        )
 
     text_embeddings = np.vstack(text_embeddings)
     image_embeddings = np.vstack(image_embeddings)

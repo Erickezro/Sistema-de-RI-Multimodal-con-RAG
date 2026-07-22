@@ -1,6 +1,8 @@
 # ------------------------------------------------------------------
 # Función de busqueda: acepta una query de TEXTO o de IMAGEN
 # ------------------------------------------------------------------
+import logging
+
 import pandas as pd
 
 from generate_embeddings import embed_text, embed_image
@@ -8,6 +10,8 @@ from vector_db import text_collection, image_collection
 from feedback_store import load_feedback, get_boost
 from rerank import rerank as rerank_candidates
 from query_expansion import expand_query
+
+logger = logging.getLogger(__name__)
 
 products = pd.read_csv("data/processed/products.csv").set_index("product_id")
 
@@ -96,7 +100,16 @@ def search(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5,
 
     results = []
     for pid, score, s_text, s_image, boost in scored:
-        row = products.loc[pid]
+        # Un id puede existir en la BD vectorial pero no en products.csv
+        # (índice desalineado / corpus regenerado). Antes esto lanzaba un
+        # KeyError que abortaba toda la búsqueda; ahora omitimos ese
+        # candidato y dejamos rastro en el log.
+        try:
+            row = products.loc[pid]
+        except KeyError:
+            logger.warning("El producto %s está en la BD vectorial pero no en "
+                           "products.csv; se omite del resultado.", pid)
+            continue
         results.append({
             "product_id": pid,
             "score_final": round(score, 4),

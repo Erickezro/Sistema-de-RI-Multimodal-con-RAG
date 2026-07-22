@@ -10,11 +10,15 @@ Uso:
     python download_corpus.py
 """
 
+import logging
 import os
 import pandas as pd
 import requests
 from datasets import load_dataset
 from tqdm import tqdm
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 os.makedirs("data/raw", exist_ok=True)
 os.makedirs("data/raw/images", exist_ok=True)
@@ -75,6 +79,7 @@ print(f"\nSubconjunto final: {len(df_sub)} filas, {df_sub['query_id'].nunique()}
 
 # Descargar imágenes localmente
 records = []
+n_failed = 0
 for i, row in tqdm(df_sub.iterrows(), total=len(df_sub), desc="Descargando imágenes"):
     img_path = f"data/raw/images/{row['product_id']}.jpg"
     if not os.path.exists(img_path):
@@ -83,7 +88,12 @@ for i, row in tqdm(df_sub.iterrows(), total=len(df_sub), desc="Descargando imág
             resp.raise_for_status()
             with open(img_path, "wb") as f:
                 f.write(resp.content)
-        except Exception:
+        except (requests.RequestException, OSError) as e:
+            # Una descarga fallida NO debe abortar todo el corpus, pero
+            # tampoco debe desaparecer sin dejar rastro: la registramos.
+            n_failed += 1
+            logger.warning("No se pudo descargar la imagen de %s (%s): %s",
+                           row["product_id"], row["image_url"], e)
             continue
 
     if os.path.exists(img_path):
@@ -101,3 +111,5 @@ for i, row in tqdm(df_sub.iterrows(), total=len(df_sub), desc="Descargando imág
 corpus_df = pd.DataFrame(records)
 corpus_df.to_csv("data/processed/corpus.csv", index=False)
 print(f"\nCorpus final guardado en data/processed/corpus.csv ({len(corpus_df)} filas)")
+if n_failed:
+    logger.warning("%d imágenes no pudieron descargarse y se omitieron del corpus.", n_failed)

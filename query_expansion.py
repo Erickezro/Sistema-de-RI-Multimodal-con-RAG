@@ -13,9 +13,12 @@ vacía -- quien llama a expand_query() simplemente sigue con la consulta
 original sin expansión, sin que la búsqueda se rompa.
 """
 
+import logging
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -64,10 +67,11 @@ def expand_query(query: str, n_variants: int = 3) -> list:
             if variants:
                 return variants[:n_variants]
         except Exception as e:
-            print(f"[DEBUG expand_query] Falló {model_name}: {e}")
+            logger.warning("expand_query: el modelo %s falló: %s", model_name, e)
             continue  # probar el siguiente modelo de la lista
 
     if _client is not None:
-        print("[DEBUG expand_query] Todos los modelos fallaron o devolvieron vacío.")
+        logger.info("expand_query: todos los modelos fallaron o devolvieron vacío; "
+                    "se continúa sin expansión.")
 
     return []

@@ -8,11 +8,15 @@ Ejecutar:
     streamlit run app.py
 """
 
-import streamlit as st
+import logging
 import os
+
+import streamlit as st
 from rag_system import ask
 from retrieve import search  # por si quieres hacer búsquedas directas
 from feedback_store import add_feedback, get_stats
+
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------
 # Configuración de página
@@ -232,16 +236,22 @@ else:  # query_type == "image"
     if uploaded_file is not None:
         st.image(uploaded_file, width=180, caption="Imagen a buscar")
         if st.button("🔍 Buscar productos similares", type="primary"):
-            os.makedirs("data/tmp_uploads", exist_ok=True)
-            # nombre único para no pisar archivos de otras búsquedas en la misma sesión
-            temp_path = os.path.join(
-                "data/tmp_uploads",
-                f"{len(st.session_state.messages)}_{uploaded_file.name}"
-            )
-            with open(temp_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            image_query_path = temp_path
-            display_content = f"🖼️ Imagen subida: {uploaded_file.name}"
+            try:
+                os.makedirs("data/tmp_uploads", exist_ok=True)
+                # nombre único para no pisar archivos de otras búsquedas en la misma sesión
+                temp_path = os.path.join(
+                    "data/tmp_uploads",
+                    f"{len(st.session_state.messages)}_{uploaded_file.name}"
+                )
+                with open(temp_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                image_query_path = temp_path
+                display_content = f"🖼️ Imagen subida: {uploaded_file.name}"
+            except OSError as e:
+                # Si no podemos guardar la imagen subida, avisamos al usuario
+                # en vez de dejar que el error rompa el render de la página.
+                logger.exception("No se pudo guardar la imagen subida")
+                st.error(f"No se pudo guardar la imagen subida: {e}")
 
 # ------------------------------------------------------------------
 # Memoria conversacional básica
@@ -303,6 +313,10 @@ if prompt or image_query_path:
                     use_expansion=use_expansion,
                 )
             except Exception as e:
+                # Mostramos un mensaje amable en la UI, pero NO perdemos el
+                # detalle: el traceback completo queda en los logs del
+                # servidor para poder diagnosticar la causa real.
+                logger.exception("Error al procesar la consulta del usuario")
                 response = f"⚠️ Ocurrió un error al procesar la consulta: {e}"
                 docs = []
 
