@@ -6,11 +6,12 @@ import pandas as pd
 from generate_embeddings import embed_text, embed_image
 from vector_db import text_collection, image_collection
 from feedback_store import load_feedback, get_boost
+from rerank import rerank as rerank_candidates
 
 products = pd.read_csv("data/processed/products.csv").set_index("product_id")
 
 
-def search(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5, use_feedback=True):
+def search(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5, use_feedback=True, use_rerank=True, rerank_pool_size=30):
     """
     query_type = "text"--> query es un string (ej. "wireless headphones")
     query_type = "image"--> query es una ruta a una imagen (ej. "foto_usuario.jpg")
@@ -20,6 +21,12 @@ def search(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5,
 
     use_feedback: si True, aplica un pequeño boost/penalización a productos
     que hayan recibido relevance feedback (👍/👎) en consultas anteriores.
+
+    use_rerank: si True (y query_type == "text"), refina el ranking inicial
+    de la búsqueda vectorial usando un Cross-Encoder sobre un pool más
+    amplio de candidatos (rerank_pool_size) antes de devolver el Top-k
+    final. Solo aplica a queries de texto -- el cross-encoder compara
+    texto contra texto, no imágenes.
     """
     if query_type == "text":
         query_vec = embed_text(query).tolist()
@@ -50,7 +57,13 @@ def search(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5,
         scored.append((pid, final_score, s_text, s_image, boost))
 
     scored.sort(key=lambda x: x[1], reverse=True)
-    scored = scored[:top_k]
+
+    # Si vamos a re-rankear, traemos un pool más amplio de candidatos
+    # (el bi-encoder es una recuperación inicial de "grueso", el
+    # cross-encoder refina); si no, nos quedamos solo con el top_k directo.
+    apply_rerank = use_rerank and query_type == "text"
+    pool_n = max(rerank_pool_size, top_k) if apply_rerank else top_k
+    scored = scored[:pool_n]
 
     results = []
     for pid, score, s_text, s_image, boost in scored:
@@ -65,17 +78,26 @@ def search(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5,
             "descripcion": row.get("product_description", ""),
             "image_path": row["image_path"],
         })
+    
+    if apply_rerank:
+        results = rerank_candidates(query, results, top_k=top_k)
+    else:
+        results = results[:top_k]
+
     return results
 
 
 if __name__ == "__main__":
-    # Prueba rápida: búsqueda por texto
-    print("\n--- Búsqueda por texto: 'wireless headphones' ---")
-    for r in search("wireless headphones", query_type="text", top_k=5):
-        print(f"[{r['score_final']}] {r['titulo']} "
-              f"(texto={r['score_texto']}, imagen={r['score_imagen']}, "
-              f"feedback={r['feedback_boost']})")
-        
+    # Prueba rápida: búsqueda por texto (con re-ranking)
+    print("\n--- Búsqueda por texto: 'wireless headphones' (con re-ranking) ---")
+    for r in search("wireless headphones", query_type="text", top_k=5, use_rerank=True):
+        print(f"[vec={r['score_final']} | rerank={r.get('rerank_score', 'N/A')}] {r['titulo']}")
+    
+
+    # Prueba rápida: la misma búsqueda SIN re-ranking, para comparar el orden
+    print("\n--- Misma búsqueda SIN re-ranking (solo bi-encoder CLIP) ---")
+    for r in search("wireless headphones", query_type="text", top_k=5, use_rerank=False):
+        print(f"[vec={r['score_final']}] {r['titulo']}")
         
     # Prueba rápida: búsqueda por imagen
     print("\n--- Búsqueda por imagen ---")

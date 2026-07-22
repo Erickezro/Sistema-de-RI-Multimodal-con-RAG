@@ -139,7 +139,7 @@ def encode_image(image_path):
         return None
 
 
-def ask(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5, memory=""):
+def ask(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5, memory="", use_rerank=True):
     """
     Pipeline completo: busca y genera respuesta.
 
@@ -148,7 +148,8 @@ def ask(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5, me
     generación de la respuesta, no la búsqueda vectorial.
     """
     docs = search(query, query_type=query_type, top_k=top_k,
-                  text_weight=text_weight, image_weight=image_weight)
+                  text_weight=text_weight, image_weight=image_weight,
+                  use_rerank=use_rerank)
     response = generate_response(query, docs, query_type=query_type, memory=memory)
     return response, docs
 

@@ -94,6 +94,14 @@ with st.sidebar:
         help="Con 'Imagen' podrás subir una foto de referencia en vez de escribir texto.",
     )
 
+    use_rerank = st.toggle(
+        "🎯 Re-ranking (Cross-Encoder)",
+        value=True,
+        help="Refina el orden inicial de la búsqueda vectorial con un modelo "
+             "que compara la consulta y cada producto juntos (más preciso, "
+             "solo aplica a consultas de texto).",
+    )
+
     st.markdown("---")
     st.markdown("#### ℹ️ Acerca del sistema")
     st.markdown(
@@ -103,6 +111,7 @@ with st.sidebar:
         - **Base de datos vectorial** para indexar y recuperar el corpus
         - **RAG** (Retrieval-Augmented Generation) para generar respuestas
           usando los productos recuperados como contexto
+        - **Re-ranking** con Cross-Encoder sobre los candidatos iniciales
         - **Memoria conversacional** de los últimos turnos
         - **Relevance Feedback** (👍/👎) que ajusta futuras búsquedas
         """
@@ -155,7 +164,10 @@ def render_evidences(docs, msg_key):
                         unsafe_allow_html=True,
                     )
                     score = doc.get("score_final", 0.0)
-                    st.markdown(f'<span class="score-badge">score: {score:.4f}</span>', unsafe_allow_html=True)
+                    badges = f'<span class="score-badge">vector: {score:.4f}</span>'
+                    if "rerank_score" in doc:
+                        badges += f' <span class="score-badge">rerank: {doc["rerank_score"]:.4f}</span>'
+                    st.markdown(badges, unsafe_allow_html=True)
                     descripcion = doc.get("descripcion", "")
                     if descripcion and str(descripcion).lower() != "nan":
                         st.write(str(descripcion)[:180] + "...")
@@ -277,6 +289,7 @@ if prompt or image_query_path:
                     query_type=query_type,
                     top_k=top_k,
                     memory=memoria_context,
+                    use_rerank=use_rerank,
                 )
             except Exception as e:
                 response = f"⚠️ Ocurrió un error al procesar la consulta: {e}"
