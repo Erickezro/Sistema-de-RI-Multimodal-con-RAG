@@ -1,0 +1,19 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = [
+    "feedback_store",
+    "evaluate",
+    "query_expansion",
+    "rerank",
+    "rag_system",
+]
+omit = [
+    "tests/*",
+    ".venv/*",
+]
+
+[tool.coverage.report]
+show_missing = true
