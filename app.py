@@ -13,6 +13,7 @@ import os
 from rag_system import ask
 from retrieve import search  # por si quieres hacer búsquedas directas
 from feedback_store import add_feedback, get_stats
+from data_utils import clean_description
 
 # ------------------------------------------------------------------
 # Configuración de página
@@ -178,9 +179,9 @@ def render_evidences(docs, msg_key):
                     if "rerank_score" in doc:
                         badges += f' <span class="score-badge">rerank: {doc["rerank_score"]:.4f}</span>'
                     st.markdown(badges, unsafe_allow_html=True)
-                    descripcion = doc.get("descripcion", "")
-                    if descripcion and str(descripcion).lower() != "nan":
-                        st.write(str(descripcion)[:180] + "...")
+                    descripcion = clean_description(doc.get("descripcion"))
+                    if descripcion:
+                        st.write(descripcion[:180] + "...")
                 with col3:
                     stats = get_stats(pid)
                     btn_col1, btn_col2 = st.columns(2)

@@ -18,6 +18,13 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
+from data_utils import (
+    load_products,
+    EMBEDDINGS_TEXT_NPY,
+    EMBEDDINGS_IMAGE_NPY,
+    EMBEDDING_IDS_CSV,
+)
+
 
 # Cargar el modelo CLIP
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -51,7 +58,7 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------
     # Generar embeddings para todos los productos del corpus
     # ------------------------------------------------------------------
-    products = pd.read_csv("data/processed/products.csv")
+    products = load_products()
 
     product_ids = []
     text_embeddings = []
@@ -78,10 +85,10 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------
     #  Guardar en disco
     # ------------------------------------------------------------------
-    np.save("data/processed/product_embeddings_text.npy", text_embeddings)
-    np.save("data/processed/product_embeddings_image.npy", image_embeddings)
+    np.save(EMBEDDINGS_TEXT_NPY, text_embeddings)
+    np.save(EMBEDDINGS_IMAGE_NPY, image_embeddings)
     pd.DataFrame({"product_id": product_ids}).to_csv(
-        "data/processed/product_embedding_ids.csv", index=False
+        EMBEDDING_IDS_CSV, index=False
     )
     print("Guardado: product_embeddings_text.npy, product_embeddings_image.npy, "
           "product_embedding_ids.csv")

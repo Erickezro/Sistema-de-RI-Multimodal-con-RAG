@@ -19,6 +19,8 @@ texto-texto, no compara imágenes.
 
 from sentence_transformers import CrossEncoder
 
+from data_utils import clean_description
+
 _model = None
 
 # MiniLM entrenado en MS MARCO: rápido y con buen desempeño para
@@ -53,9 +55,7 @@ def rerank(query, candidates, top_k=None, text_key="titulo", desc_key="descripci
     pairs = []
     for c in candidates:
         titulo = c.get(text_key, "") or ""
-        desc = c.get(desc_key, "") or ""
-        if str(desc).lower() == "nan":
-            desc = ""
+        desc = clean_description(c.get(desc_key))
         doc_text = f"{titulo}. {desc}".strip()[:512]  # limitar longitud del input
         pairs.append((query, doc_text))
 

@@ -2,19 +2,27 @@ import pandas as pd
 import numpy as np
 import chromadb
 
+from data_utils import (
+    load_products,
+    EMBEDDING_IDS_CSV,
+    EMBEDDINGS_TEXT_NPY,
+    EMBEDDINGS_IMAGE_NPY,
+    CHROMA_DB_DIR,
+)
 
-ids_df = pd.read_csv("data/processed/product_embedding_ids.csv")
+
+ids_df = pd.read_csv(EMBEDDING_IDS_CSV)
 product_ids = ids_df["product_id"].astype(str).tolist()
 
-text_embs = np.load("data/processed/product_embeddings_text.npy")
-image_embs = np.load("data/processed/product_embeddings_image.npy")
+text_embs = np.load(EMBEDDINGS_TEXT_NPY)
+image_embs = np.load(EMBEDDINGS_IMAGE_NPY)
 
 assert len(product_ids) == len(text_embs) == len(image_embs), \
     "Los IDs y los embeddings no tienen el mismo largo -- algo quedó desalineado"
 
-products = pd.read_csv("data/processed/products.csv").set_index("product_id")
+products = load_products(index_by_id=True)
 
-chroma_client = chromadb.PersistentClient(path="data/chroma_db")
+chroma_client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
 
 text_collection = chroma_client.get_or_create_collection(
     name="products_text", metadata={"hnsw:space": "cosine"}

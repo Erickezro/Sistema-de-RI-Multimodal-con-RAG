@@ -16,9 +16,11 @@ import requests
 from datasets import load_dataset
 from tqdm import tqdm
 
-os.makedirs("data/raw", exist_ok=True)
-os.makedirs("data/raw/images", exist_ok=True)
-os.makedirs("data/processed", exist_ok=True)
+from data_utils import RAW_DIR, RAW_IMAGES_DIR, PROCESSED_DIR, CORPUS_CSV
+
+os.makedirs(RAW_DIR, exist_ok=True)
+os.makedirs(RAW_IMAGES_DIR, exist_ok=True)
+os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 # Descargar ESCI (texto + esci_label) desde Hugging Face
 print("Descargando ESCI (queries + products) desde Hugging Face...")
@@ -76,7 +78,7 @@ print(f"\nSubconjunto final: {len(df_sub)} filas, {df_sub['query_id'].nunique()}
 # Descargar imágenes localmente
 records = []
 for i, row in tqdm(df_sub.iterrows(), total=len(df_sub), desc="Descargando imágenes"):
-    img_path = f"data/raw/images/{row['product_id']}.jpg"
+    img_path = os.path.join(RAW_IMAGES_DIR, f"{row['product_id']}.jpg")
     if not os.path.exists(img_path):
         try:
             resp = requests.get(row["image_url"], timeout=10)
@@ -99,5 +101,5 @@ for i, row in tqdm(df_sub.iterrows(), total=len(df_sub), desc="Descargando imág
 
 # Guardamos el corpus procesado
 corpus_df = pd.DataFrame(records)
-corpus_df.to_csv("data/processed/corpus.csv", index=False)
+corpus_df.to_csv(CORPUS_CSV, index=False)
 print(f"\nCorpus final guardado en data/processed/corpus.csv ({len(corpus_df)} filas)")

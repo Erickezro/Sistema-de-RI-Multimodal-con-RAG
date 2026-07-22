@@ -4,34 +4,12 @@ Sistema RAG multimodal con ChromaDB y OpenRouter (modelos gratuitos)
 import base64
 import mimetypes
 import os
-from openai import OpenAI
-from dotenv import load_dotenv
+
 from retrieve import search
+from llm_client import get_client, chat_with_fallback
+from data_utils import clean_description
 
-# Cargar variables de entorno
-load_dotenv()
-
-# Cliente de OpenRouter
-# (se aceptan ambas variantes de nombre por robustez, ya que .env puede
-# tener cualquiera de las dos según quién lo haya configurado)
-api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OpenRouter_API_KEY")
-if not api_key:
-    raise ValueError("OPENROUTER_API_KEY no encontrada. Revisa tu archivo .env.")
-
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=api_key,
-)
-
-# Lista de modelos gratuitos con soporte de visión, en orden de preferencia.
-# Los modelos ":free" de OpenRouter a veces se saturan temporalmente (rate
-# limit del proveedor detrás, ej. Google AI Studio) -- probamos varios en
-# cadena para que una demo en vivo no dependa de un solo proveedor caído.
-FALLBACK_MODELS = [
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-    "google/gemma-4-26b-a4b-it:free",
-    "google/gemma-4-31b-it:free",
-]
+client = get_client()
 
 
 def generate_response(query, docs, query_type="text", memory="", max_images=4):
@@ -63,9 +41,7 @@ def generate_response(query, docs, query_type="text", memory="", max_images=4):
     # --- Contexto de texto ---
     context_parts = []
     for i, doc in enumerate(docs, 1):
-        descripcion = doc.get('descripcion', '')
-        if not descripcion or str(descripcion).lower() == "nan":
-            descripcion = "Sin descripción"
+        descripcion = clean_description(doc.get('descripcion'), default="Sin descripción")
         text = f"Producto {i}: {doc.get('titulo', 'Sin título')}\nDescripción: {descripcion}"
         context_parts.append(text)
     context = "\n\n".join(context_parts)
@@ -112,23 +88,15 @@ REGLAS IMPORTANTES:
             content_blocks.append({"type": "image_url", "image_url": {"url": img_url}})
             images_added += 1
 
-    try:
-        last_error = None
-        for model_name in FALLBACK_MODELS:
-            try:
-                response = client.chat.completions.create(
-                    model=model_name,
-                    messages=[{"role": "user", "content": content_blocks}],
-                    temperature=0.3,
-                    max_tokens=800
-                )
-                return response.choices[0].message.content
-            except Exception as e:
-                last_error = e
-                continue  # probar el siguiente modelo de la lista
-        return f"Error al generar respuesta (todos los modelos gratuitos fallaron): {last_error}"
-    except Exception as e:
-        return f"Error al generar respuesta: {e}"
+    content, error = chat_with_fallback(
+        client,
+        messages=[{"role": "user", "content": content_blocks}],
+        temperature=0.3,
+        max_tokens=800,
+    )
+    if content is not None:
+        return content
+    return f"Error al generar respuesta (todos los modelos gratuitos fallaron): {error}"
 
 
 def resolve_image_url(image_path):

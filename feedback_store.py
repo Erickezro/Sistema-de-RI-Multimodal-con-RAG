@@ -11,8 +11,8 @@ si el corpus creciera mucho convendría moverlo a una tabla en la BD vectorial).
  
 import json
 import os
- 
-FEEDBACK_PATH = "data/feedback.json"
+
+from data_utils import FEEDBACK_PATH
  
 # Cuánto pesa cada "voto neto" en el score final, y el tope para que
 # el feedback no termine dominando por completo la similitud semántica.

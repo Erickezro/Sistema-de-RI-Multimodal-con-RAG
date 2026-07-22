@@ -1,15 +1,14 @@
 # ------------------------------------------------------------------
 # Función de busqueda: acepta una query de TEXTO o de IMAGEN
 # ------------------------------------------------------------------
-import pandas as pd
-
 from generate_embeddings import embed_text, embed_image
 from vector_db import text_collection, image_collection
 from feedback_store import load_feedback, get_boost
 from rerank import rerank as rerank_candidates
 from query_expansion import expand_query
+from data_utils import load_products
 
-products = pd.read_csv("data/processed/products.csv").set_index("product_id")
+products = load_products(index_by_id=True)
 
 
 def _query_collections(query_vec, n_fetch):

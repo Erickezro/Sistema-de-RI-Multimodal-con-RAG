@@ -13,25 +13,11 @@ vacía -- quien llama a expand_query() simplemente sigue con la consulta
 original sin expansión, sin que la búsqueda se rompa.
 """
 
-import os
-from openai import OpenAI
-from dotenv import load_dotenv
+from llm_client import get_client, FREE_MODELS
 
-load_dotenv()
-
-_api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OpenRouter_API_KEY")
-_client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=_api_key) if _api_key else None
-
-# Modelos de texto livianos para esta tarea (no necesitan soporte de visión).
-# Mismos modelos que ya confirmamos funcionando en rag_system.py -- se pone
-# primero el de NVIDIA porque corre en un proveedor distinto a Google AI
-# Studio, así que tiene un cupo de rate limit independiente si Google está
-# saturado (como pasó varias veces durante las pruebas).
-EXPANSION_MODELS = [
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-    "google/gemma-4-26b-a4b-it:free",
-    "google/gemma-4-31b-it:free",
-]
+# El cliente puede ser None si falta la API key: expand_query se degrada
+# de forma segura en ese caso (ver más abajo).
+_client = get_client(required=False)
 
 
 def expand_query(query: str, n_variants: int = 3) -> list:
@@ -50,7 +36,7 @@ def expand_query(query: str, n_variants: int = 3) -> list:
         f"sin explicaciones adicionales.\n\nConsulta: \"{query}\""
     )
 
-    for model_name in EXPANSION_MODELS:
+    for model_name in FREE_MODELS:
         try:
             response = _client.chat.completions.create(
                 model=model_name,

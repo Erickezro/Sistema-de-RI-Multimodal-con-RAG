@@ -15,7 +15,9 @@ import os
 from bs4 import BeautifulSoup
 import re
 
-df = pd.read_csv("data/processed/corpus.csv")
+from data_utils import CORPUS_CSV, PRODUCTS_CSV, QRELS_CSV
+
+df = pd.read_csv(CORPUS_CSV)
 print(f"Filas originales: {len(df)}")
 
 
@@ -63,7 +65,7 @@ products = (
     .drop_duplicates(subset="product_id")
     .reset_index(drop=True)
 )
-products.to_csv("data/processed/products.csv", index=False)
+products.to_csv(PRODUCTS_CSV, index=False)
 print(f"\nproducts.csv: {len(products)} productos únicos")
 
 # ------------------------------------------------------------------
@@ -71,7 +73,7 @@ print(f"\nproducts.csv: {len(products)} productos únicos")
 # Esto usaremos en la Etapa 6 para Precision@k, Recall@k, NDCG@k
 # ------------------------------------------------------------------
 qrels = df[["query_id", "query", "product_id", "esci_label"]].drop_duplicates()
-qrels.to_csv("data/processed/qrels.csv", index=False)
+qrels.to_csv(QRELS_CSV, index=False)
 print(f"qrels.csv: {len(qrels)} juicios de relevancia, "
       f"{qrels['query_id'].nunique()} queries únicas")
 

@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from retrieve import search
+from data_utils import QRELS_CSV
  
  
 def precision_at_k(retrieved, relevant, k):
@@ -67,7 +68,7 @@ def evaluate(qrels, k_values=[1, 3, 5, 10]):
  
  
 if __name__ == "__main__":
-    qrels = pd.read_csv("data/processed/qrels.csv")
+    qrels = pd.read_csv(QRELS_CSV)
     label_map = {"E": 3, "S": 2, "C": 1, "I": 0}
     qrels["relevance"] = qrels["esci_label"].map(label_map)
  
