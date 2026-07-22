@@ -12,8 +12,6 @@ from retrieve import search
 load_dotenv()
 
 # Cliente de OpenRouter
-# (se aceptan ambas variantes de nombre por robustez, ya que .env puede
-# tener cualquiera de las dos según quién lo haya configurado)
 api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OpenRouter_API_KEY")
 if not api_key:
     raise ValueError("OPENROUTER_API_KEY no encontrada. Revisa tu archivo .env.")
@@ -23,18 +21,10 @@ client = OpenAI(
     api_key=api_key,
 )
 
-# Lista de modelos gratuitos con soporte de visión, en orden de preferencia.
-# Los modelos ":free" de OpenRouter a veces se saturan temporalmente (rate
-# limit del proveedor detrás, ej. Google AI Studio) -- probamos varios en
-# cadena para que una demo en vivo no dependa de un solo proveedor caído.
-FALLBACK_MODELS = [
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-    "google/gemma-4-26b-a4b-it:free",
-    "google/gemma-4-31b-it:free",
-]
+DEFAULT_MODEL = "openrouter/free"
 
 
-def generate_response(query, docs, query_type="text", memory="", max_images=4):
+def generate_response(query, docs, query_type="text", memory="", max_images=4, model=DEFAULT_MODEL):
     """
     Genera respuesta usando el LLM con contexto de los productos recuperados.
 
@@ -113,20 +103,13 @@ REGLAS IMPORTANTES:
             images_added += 1
 
     try:
-        last_error = None
-        for model_name in FALLBACK_MODELS:
-            try:
-                response = client.chat.completions.create(
-                    model=model_name,
-                    messages=[{"role": "user", "content": content_blocks}],
-                    temperature=0.3,
-                    max_tokens=800
-                )
-                return response.choices[0].message.content
-            except Exception as e:
-                last_error = e
-                continue  # probar el siguiente modelo de la lista
-        return f"Error al generar respuesta (todos los modelos gratuitos fallaron): {last_error}"
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": content_blocks}],
+            temperature=0.3,
+            max_tokens=800
+        )
+        return response.choices[0].message.content
     except Exception as e:
         return f"Error al generar respuesta: {e}"
 
@@ -157,18 +140,11 @@ def encode_image(image_path):
 
 
 def ask(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5, memory="",
-        use_rerank=True, use_expansion=False):
-    """
-    Pipeline completo: busca y genera respuesta.
-
-    `query` SIEMPRE es la consulta real usada para buscar (texto o ruta de
-    imagen) -- la memoria conversacional se pasa aparte y solo afecta la
-    generación de la respuesta, no la búsqueda vectorial.
-    """
+        use_rerank=True, use_expansion=False, model=DEFAULT_MODEL):
     docs = search(query, query_type=query_type, top_k=top_k,
                   text_weight=text_weight, image_weight=image_weight,
                   use_rerank=use_rerank, use_expansion=use_expansion)
-    response = generate_response(query, docs, query_type=query_type, memory=memory)
+    response = generate_response(query, docs, query_type=query_type, memory=memory, model=model)
     return response, docs
 
 
