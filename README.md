@@ -161,6 +161,8 @@ Todas son activables/desactivables desde el sidebar de la app (excepto Relevance
  
 ```
 ├── app.py                  # Interfaz Streamlit
+├── clean_corpus.py                  # Limpieza del corpus
+├── download_corpus.py                  # Descarga del corpus
 ├── rag_system.py            # Pipeline RAG (búsqueda + generación con LLM)
 ├── retrieve.py               # Búsqueda vectorial (texto/imagen, feedback, rerank, expansion)
 ├── rerank.py                 # Re-ranking con Cross-Encoder
