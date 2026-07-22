@@ -222,9 +222,40 @@ else:  # query_type == "image"
             image_query_path = temp_path
             display_content = f"🖼️ Imagen subida: {uploaded_file.name}"
  
+# -------------------------------
+# Memoria conversacional básica
+# -------------------------------
+def build_memoria_context(messages, max_turns=3):
+    """
+    Devuelve un string concatenado con los últimos turnos de usuario/asistente.
+    max_turns: cantidad de pares user-assistant a considerar.
+    """
+    if not messages:
+        return ""
+    memo = []
+    # Solo los turnos previos completos (sin el mensaje actual que aún no se agrega)
+    # Considera solo mensajes finalizados (role user/assistant)
+    relevant_msgs = messages[-(max_turns*2):]  # últimos N pares
+    for m in relevant_msgs:
+        if m["role"] == "user":
+            memo.append(f"Usuario: {m['content']}")
+        elif m["role"] == "assistant":
+            memo.append(f"Asistente: {m['content']}")
+    return "\n".join(memo)
+
 if prompt or image_query_path:
-    actual_query = prompt if query_type == "text" else image_query_path
- 
+    memoria_context = build_memoria_context(st.session_state.messages, max_turns=3)
+
+    if query_type == "text":
+        if memoria_context:
+            actual_query = memoria_context + f"\nUsuario: {prompt}"
+        else:
+            actual_query = prompt
+    else:
+        # Para queries de imagen, puedes pasar el historial solo como contexto para el modelo generativo
+        # o añadir un recordatorio textual adicional. Aquí lo pasamos por si el generador lo aprovecha.
+        actual_query = memoria_context if memoria_context else ""
+
     # Mensaje del usuario
     st.session_state.messages.append({
         "role": "user",
@@ -235,7 +266,7 @@ if prompt or image_query_path:
         if image_query_path:
             st.image(image_query_path, width=180)
         st.markdown(display_content)
- 
+
     with st.chat_message("assistant"):
         with st.spinner("Recuperando evidencia y generando respuesta..."):
             try:
@@ -243,7 +274,7 @@ if prompt or image_query_path:
             except Exception as e:
                 response = f"⚠️ Ocurrió un error al procesar la consulta: {e}"
                 docs = []
- 
+
         # Se guarda en el historial ANTES de renderizar los botones de feedback:
         # si el usuario da clic en 👍/👎, dispara un st.rerun(), y si el mensaje
         # no estuviera ya guardado se perdería de la conversación.
@@ -253,7 +284,8 @@ if prompt or image_query_path:
             "evidences": docs,
         })
         new_msg_idx = len(st.session_state.messages) - 1
- 
+
         st.markdown(response)
         render_evidences(docs, msg_key=f"hist{new_msg_idx}")
+
  
