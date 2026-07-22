@@ -23,6 +23,16 @@ client = OpenAI(
     api_key=api_key,
 )
 
+# Lista de modelos gratuitos con soporte de visión, en orden de preferencia.
+# Los modelos ":free" de OpenRouter a veces se saturan temporalmente (rate
+# limit del proveedor detrás, ej. Google AI Studio) -- probamos varios en
+# cadena para que una demo en vivo no dependa de un solo proveedor caído.
+FALLBACK_MODELS = [
+    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "google/gemma-4-26b-a4b-it:free",
+]
+
 
 def generate_response(query, docs, query_type="text", memory="", max_images=4):
     """
@@ -103,13 +113,20 @@ REGLAS IMPORTANTES:
             images_added += 1
 
     try:
-        response = client.chat.completions.create(
-            model="deepseek/deepseek-chat-v3-0324:free",
-            messages=[{"role": "user", "content": content_blocks}],
-            temperature=0.3,
-            max_tokens=800
-        )
-        return response.choices[0].message.content
+        last_error = None
+        for model_name in FALLBACK_MODELS:
+            try:
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=[{"role": "user", "content": content_blocks}],
+                    temperature=0.3,
+                    max_tokens=800
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                last_error = e
+                continue  # probar el siguiente modelo de la lista
+        return f"Error al generar respuesta (todos los modelos gratuitos fallaron): {last_error}"
     except Exception as e:
         return f"Error al generar respuesta: {e}"
 
