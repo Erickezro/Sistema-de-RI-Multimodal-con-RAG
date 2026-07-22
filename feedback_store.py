@@ -14,17 +14,22 @@ import os
  
 FEEDBACK_PATH = "data/feedback.json"
  
-# Cuánto pesa cada "voto neto" en el score final, y el tope para que
-# el feedback no termine dominando por completo la similitud semántica.
-ALPHA = 0.03
-CAP = 0.15
+# Parámetros de ajuste del boost
+ALPHA = 0.03   # Peso de cada voto neto en el score final
+CAP = 0.15     # Límite máximo de ajuste (para no dominar la similitud semántica)
  
  
+# ============================================================
+# FUNCIONES DE PERSISTENCIA (cargar/guardar JSON)
+# ============================================================
+
 def _ensure_dir():
+    """Asegura que existe el directorio donde se guarda el archivo feedback."""
     os.makedirs(os.path.dirname(FEEDBACK_PATH), exist_ok=True)
  
  
 def load_feedback() -> dict:
+    """Carga el diccionario de feedback desde el archivo JSON. Si no existe, devuelve {}."""
     if not os.path.exists(FEEDBACK_PATH):
         return {}
     with open(FEEDBACK_PATH, "r", encoding="utf-8") as f:
@@ -32,11 +37,16 @@ def load_feedback() -> dict:
  
  
 def save_feedback(data: dict):
+    """Guarda el diccionario de feedback en el archivo JSON."""
     _ensure_dir()
     with open(FEEDBACK_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
  
  
+# ============================================================
+# FUNCIONES PARA REGISTRAR Y CONSULTAR FEEDBACK
+# ============================================================
+
 def add_feedback(product_id: str, liked: bool):
     """Registra un 👍 (liked=True) o 👎 (liked=False) para un producto."""
     data = load_feedback()
@@ -66,5 +76,6 @@ def get_boost(product_id: str, data: dict | None = None) -> float:
  
  
 def get_stats(product_id: str) -> dict:
+    """Devuelve el conteo de likes/dislikes para un producto."""
     data = load_feedback()
     return data.get(product_id, {"likes": 0, "dislikes": 0})
