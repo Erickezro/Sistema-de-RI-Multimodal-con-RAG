@@ -7,11 +7,23 @@ from generate_embeddings import embed_text, embed_image
 from vector_db import text_collection, image_collection
 from feedback_store import load_feedback, get_boost
 from rerank import rerank as rerank_candidates
+from query_expansion import expand_query
 
 products = pd.read_csv("data/processed/products.csv").set_index("product_id")
 
 
-def search(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5, use_feedback=True, use_rerank=True, rerank_pool_size=30):
+def _query_collections(query_vec, n_fetch):
+    """Corre la búsqueda vectorial contra ambas colecciones para un vector dado."""
+    res_text = text_collection.query(query_embeddings=[query_vec], n_results=n_fetch)
+    res_image = image_collection.query(query_embeddings=[query_vec], n_results=n_fetch)
+    sims_text = {pid: 1 - d for pid, d in zip(res_text["ids"][0], res_text["distances"][0])}
+    sims_image = {pid: 1 - d for pid, d in zip(res_image["ids"][0], res_image["distances"][0])}
+    return sims_text, sims_image
+
+
+def search(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5,
+           use_feedback=True, use_rerank=True, rerank_pool_size=30,
+           use_expansion=False, n_expansions=3):
     """
     query_type = "text"--> query es un string (ej. "wireless headphones")
     query_type = "image"--> query es una ruta a una imagen (ej. "foto_usuario.jpg")
@@ -24,24 +36,41 @@ def search(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5,
 
     use_rerank: si True (y query_type == "text"), refina el ranking inicial
     de la búsqueda vectorial usando un Cross-Encoder sobre un pool más
-    amplio de candidatos (rerank_pool_size) antes de devolver el Top-k
-    final. Solo aplica a queries de texto -- el cross-encoder compara
-    texto contra texto, no imágenes.
+    amplio de candidatos (rerank_pool_size) antes de devolver el Top-k final.
+
+    use_expansion: si True (y query_type == "text"), genera hasta
+    n_expansions reformulaciones de la query con un LLM y busca también
+    con esas variantes, combinando resultados por el score MÁXIMO obtenido
+    entre todas las formulaciones para cada producto (mejora el recall
+    cuando el usuario usa vocabulario distinto al del catálogo). Si la
+    generación de variantes falla (ej. rate limit del LLM), se degrada
+    de forma segura a buscar solo con la query original -- search() nunca
+    lanza una excepción por esto.
+
+    Devuelve solo la lista de resultados (para no romper la firma que ya
+    usan rag_system.ask() y evaluate.py). Las variantes usadas quedan
+    disponibles llamando aparte a query_expansion.expand_query(query) si
+    se necesitan mostrar en la interfaz.
     """
-    if query_type == "text":
-        query_vec = embed_text(query).tolist()
-    elif query_type == "image":
-        query_vec = embed_image(query).tolist()
-    else:
-        raise ValueError("query_type debe ser 'text' o 'image'")
+    variants = [query]
+    if query_type == "text" and use_expansion:
+        variants += expand_query(query, n_variants=n_expansions)
 
+    sims_text, sims_image = {}, {}
     n_fetch = max(top_k * 4, 20)
-    res_text = text_collection.query(query_embeddings=[query_vec], n_results=n_fetch)
-    res_image = image_collection.query(query_embeddings=[query_vec], n_results=n_fetch)
 
-    # distance -> similitud coseno (porque space="cosine")
-    sims_text = {pid: 1 - d for pid, d in zip(res_text["ids"][0], res_text["distances"][0])}
-    sims_image = {pid: 1 - d for pid, d in zip(res_image["ids"][0], res_image["distances"][0])}
+    for variant in variants:
+        if query_type == "text":
+            vec = embed_text(variant).tolist()
+        else:
+            vec = embed_image(variant).tolist()
+
+        v_sims_text, v_sims_image = _query_collections(vec, n_fetch)
+
+        for pid, s in v_sims_text.items():
+            sims_text[pid] = max(sims_text.get(pid, 0.0), s)
+        for pid, s in v_sims_image.items():
+            sims_image[pid] = max(sims_image.get(pid, 0.0), s)
 
     all_ids = set(sims_text) | set(sims_image)
 
@@ -78,7 +107,7 @@ def search(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5,
             "descripcion": row.get("product_description", ""),
             "image_path": row["image_path"],
         })
-    
+
     if apply_rerank:
         results = rerank_candidates(query, results, top_k=top_k)
     else:
@@ -92,14 +121,25 @@ if __name__ == "__main__":
     print("\n--- Búsqueda por texto: 'wireless headphones' (con re-ranking) ---")
     for r in search("wireless headphones", query_type="text", top_k=5, use_rerank=True):
         print(f"[vec={r['score_final']} | rerank={r.get('rerank_score', 'N/A')}] {r['titulo']}")
-    
 
     # Prueba rápida: la misma búsqueda SIN re-ranking, para comparar el orden
     print("\n--- Misma búsqueda SIN re-ranking (solo bi-encoder CLIP) ---")
     for r in search("wireless headphones", query_type="text", top_k=5, use_rerank=False):
         print(f"[vec={r['score_final']}] {r['titulo']}")
-        
-    # Prueba rápida: búsqueda por imagen
-    print("\n--- Búsqueda por imagen ---")
-    for r in search("data/raw/images/B00FTCMR96.jpg", query_type="image", top_k=5):
-        print(f"[{r['score_final']}] {r['titulo']} (texto={r['score_texto']}, imagen={r['score_imagen']})")
+
+    # Prueba rápida: Query Expansion -- comparar CON y SIN expansión
+    print("\n--- Query Expansion: variantes generadas para 'earbuds' ---")
+    variants = expand_query("earbuds", n_variants=3)
+    print(f"Variantes: {variants}")
+
+    print("\n--- Búsqueda 'earbuds' SIN expansión ---")
+    for r in search("earbuds", query_type="text", top_k=5, use_expansion=False):
+        print(f"[vec={r['score_final']}] {r['titulo']}")
+
+    print("\n--- Búsqueda 'earbuds' CON expansión ---")
+    for r in search("earbuds", query_type="text", top_k=5, use_expansion=True):
+        print(f"[vec={r['score_final']}] {r['titulo']}")
+
+    # Prueba rápida: búsqueda por imagen (re-ranking y expansion se ignoran automáticamente)
+    # for r in search("data/raw/images/B00FTCMR96.jpg", query_type="image", top_k=5):
+    #     print(f"[{r['score_final']}] {r['titulo']} (texto={r['score_texto']}, imagen={r['score_imagen']})")

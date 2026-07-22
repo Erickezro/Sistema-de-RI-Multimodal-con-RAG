@@ -28,9 +28,9 @@ client = OpenAI(
 # limit del proveedor detrás, ej. Google AI Studio) -- probamos varios en
 # cadena para que una demo en vivo no dependa de un solo proveedor caído.
 FALLBACK_MODELS = [
-    "google/gemma-4-31b-it:free",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
     "google/gemma-4-26b-a4b-it:free",
+    "google/gemma-4-31b-it:free",
 ]
 
 
@@ -156,7 +156,8 @@ def encode_image(image_path):
         return None
 
 
-def ask(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5, memory="", use_rerank=True):
+def ask(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5, memory="",
+        use_rerank=True, use_expansion=False):
     """
     Pipeline completo: busca y genera respuesta.
 
@@ -166,7 +167,7 @@ def ask(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5, me
     """
     docs = search(query, query_type=query_type, top_k=top_k,
                   text_weight=text_weight, image_weight=image_weight,
-                  use_rerank=use_rerank)
+                  use_rerank=use_rerank, use_expansion=use_expansion)
     response = generate_response(query, docs, query_type=query_type, memory=memory)
     return response, docs
 

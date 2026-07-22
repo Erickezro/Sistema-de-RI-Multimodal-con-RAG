@@ -102,6 +102,15 @@ with st.sidebar:
              "solo aplica a consultas de texto).",
     )
 
+    use_expansion = st.toggle(
+        "🔀 Query Expansion",
+        value=False,
+        help="Genera reformulaciones/sinónimos automáticos de tu consulta con "
+             "un LLM y busca también con esas variantes (mejora el recall "
+             "cuando usas vocabulario distinto al del catálogo). Solo aplica "
+             "a consultas de texto; agrega una llamada extra al LLM.",
+    )
+
     st.markdown("---")
     st.markdown("#### ℹ️ Acerca del sistema")
     st.markdown(
@@ -112,6 +121,7 @@ with st.sidebar:
         - **RAG** (Retrieval-Augmented Generation) para generar respuestas
           usando los productos recuperados como contexto
         - **Re-ranking** con Cross-Encoder sobre los candidatos iniciales
+        - **Query Expansion** con reformulaciones generadas por LLM
         - **Memoria conversacional** de los últimos turnos
         - **Relevance Feedback** (👍/👎) que ajusta futuras búsquedas
         """
@@ -290,6 +300,7 @@ if prompt or image_query_path:
                     top_k=top_k,
                     memory=memoria_context,
                     use_rerank=use_rerank,
+                    use_expansion=use_expansion,
                 )
             except Exception as e:
                 response = f"⚠️ Ocurrió un error al procesar la consulta: {e}"
