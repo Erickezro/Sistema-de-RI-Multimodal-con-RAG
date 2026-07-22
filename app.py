@@ -10,6 +10,8 @@ Ejecutar:
 
 import streamlit as st
 import os
+import html
+import re
 from rag_system import ask
 from retrieve import search  # por si quieres hacer búsquedas directas
 from feedback_store import add_feedback, get_stats
@@ -168,9 +170,10 @@ def render_evidences(docs, msg_key):
                             "<small>Sin imagen</small></div>", unsafe_allow_html=True
                         )
                 with col2:
+                    titulo = html.escape(str(doc.get("titulo", "Sin título")))
                     st.markdown(
                         f'<span class="rank-badge">{i+1}</span>'
-                        f'**{doc.get("titulo", "Sin título")}**',
+                        f'<strong>{titulo}</strong>',
                         unsafe_allow_html=True,
                     )
                     score = doc.get("score_final", 0.0)
@@ -232,11 +235,17 @@ else:  # query_type == "image"
     if uploaded_file is not None:
         st.image(uploaded_file, width=180, caption="Imagen a buscar")
         if st.button("🔍 Buscar productos similares", type="primary"):
-            os.makedirs("data/tmp_uploads", exist_ok=True)
+            upload_dir = "data/tmp_uploads"
+            os.makedirs(upload_dir, exist_ok=True)
+            # Sanitizar el nombre subido por el cliente: nos quedamos solo con
+            # el basename y descartamos cualquier carácter que no sea seguro,
+            # para evitar path traversal (ej. "../../etc/passwd").
+            safe_name = os.path.basename(uploaded_file.name)
+            safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", safe_name) or "upload"
             # nombre único para no pisar archivos de otras búsquedas en la misma sesión
             temp_path = os.path.join(
-                "data/tmp_uploads",
-                f"{len(st.session_state.messages)}_{uploaded_file.name}"
+                upload_dir,
+                f"{len(st.session_state.messages)}_{safe_name}"
             )
             with open(temp_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
@@ -303,7 +312,11 @@ if prompt or image_query_path:
                     use_expansion=use_expansion,
                 )
             except Exception as e:
-                response = f"⚠️ Ocurrió un error al procesar la consulta: {e}"
+                # No exponemos el detalle de la excepción en la UI (puede
+                # filtrar rutas internas, trazas, etc.); se registra en el log
+                # del servidor y al usuario se le muestra un mensaje genérico.
+                print(f"[ERROR] Fallo al procesar la consulta: {e}")
+                response = "⚠️ Ocurrió un error al procesar la consulta. Inténtalo de nuevo."
                 docs = []
 
         # Se guarda en el historial ANTES de renderizar los botones de feedback:
