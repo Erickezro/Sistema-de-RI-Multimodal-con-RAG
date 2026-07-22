@@ -7,26 +7,34 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 from retrieve import search
- 
+
 # Cargar variables de entorno
 load_dotenv()
- 
+
 # Cliente de OpenRouter
-api_key = os.getenv("OpenRouter_API_KEY") # os.getenv("GEMINI_API_KEY")
+# (se aceptan ambas variantes de nombre por robustez, ya que .env puede
+# tener cualquiera de las dos según quién lo haya configurado)
+api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OpenRouter_API_KEY")
 if not api_key:
-    raise ValueError("OPENROUTER_API_KEY no encontrada.")
- 
+    raise ValueError("OPENROUTER_API_KEY no encontrada. Revisa tu archivo .env.")
+
 client = OpenAI(
-    # base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     base_url="https://openrouter.ai/api/v1",
     api_key=api_key,
 )
 
-def generate_response(query, docs, query_type="text", max_images=4):
+
+def generate_response(query, docs, query_type="text", memory="", max_images=4):
     """
-    Genera respuesta usando Gemini con contexto de los productos recuperados.
+    Genera respuesta usando el LLM con contexto de los productos recuperados.
+
     Si query_type == "image", `query` es la ruta a la imagen de referencia
     y se envía junto con las imágenes de los productos recuperados.
+
+    memory: texto con los últimos turnos de la conversación (memoria
+    conversacional). Se usa SOLO para dar contexto al LLM al generar la
+    respuesta -- nunca se usa para la búsqueda vectorial, para no degradar
+    la calidad del embedding de la consulta actual.
     """
     if not docs:
         return "No se encontraron productos relevantes para tu consulta."
@@ -52,18 +60,25 @@ def generate_response(query, docs, query_type="text", max_images=4):
         context_parts.append(text)
     context = "\n\n".join(context_parts)
 
-    prompt = f"""Eres un asistente de compras experto. Responde la pregunta del usuario basándote ÚNICAMENTE en el contexto de productos proporcionado (texto e imágenes).
+    memory_block = ""
+    if memory:
+        memory_block = f"""
+### Historial reciente de la conversación (para dar contexto, no repitas literalmente):
+{memory}
+"""
+
+    prompt = f"""Eres un asistente de compras experto. Responde la pregunta del usuario basándote ÚNICAMENTE en el contexto de productos proporcionado (texto e imágenes), y ten en cuenta el historial de la conversación si es relevante para entender la pregunta actual.
 
 REGLAS IMPORTANTES:
 1. Usa SOLO la información del contexto (texto + imágenes adjuntas).
 2. Si el contexto no contiene suficiente información para responder, di: "No tengo suficiente información en el corpus para responder esta pregunta."
 3. Sé conciso pero informativo, describiendo los productos en detalle, incluyendo lo que ves en sus imágenes.
 4. Menciona los productos específicos (por su número "Producto N") que respaldan tu respuesta.
-
+{memory_block}
 ### Contexto de productos:
 {context}
 
-### Pregunta del usuario:
+### Pregunta actual del usuario:
 {user_question_text}
 
 ### Respuesta:
@@ -89,7 +104,7 @@ REGLAS IMPORTANTES:
 
     try:
         response = client.chat.completions.create(
-            model="openrouter/free",
+            model="deepseek/deepseek-chat-v3-0324:free",
             messages=[{"role": "user", "content": content_blocks}],
             temperature=0.3,
             max_tokens=800
@@ -122,16 +137,22 @@ def encode_image(image_path):
     except Exception as e:
         print(f"Error codificando imagen {image_path}: {e}")
         return None
- 
-def ask(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5):
+
+
+def ask(query, query_type="text", top_k=5, text_weight=0.5, image_weight=0.5, memory=""):
     """
     Pipeline completo: busca y genera respuesta.
+
+    `query` SIEMPRE es la consulta real usada para buscar (texto o ruta de
+    imagen) -- la memoria conversacional se pasa aparte y solo afecta la
+    generación de la respuesta, no la búsqueda vectorial.
     """
     docs = search(query, query_type=query_type, top_k=top_k,
                   text_weight=text_weight, image_weight=image_weight)
-    response = generate_response(query, docs, query_type=query_type)
+    response = generate_response(query, docs, query_type=query_type, memory=memory)
     return response, docs
- 
+
+
 if __name__ == "__main__":
     # Prueba rápida
     print("=== Prueba RAG con OpenRouter ===")
@@ -142,4 +163,3 @@ if __name__ == "__main__":
     print(f"\nProductos recuperados ({len(docs)}):")
     for i, doc in enumerate(docs, 1):
         print(f"  {i}. {doc['titulo']} (score: {doc['score_final']})")
- 

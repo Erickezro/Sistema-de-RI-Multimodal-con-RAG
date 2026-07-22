@@ -1,19 +1,19 @@
 """
 Interfaz conversacional con Streamlit para el sistema RAG multimodal.
- 
+
 Proyecto Final - Sistema de Recuperación de Información Multimodal
 Asignatura: Recuperación de Información
- 
+
 Ejecutar:
     streamlit run app.py
 """
- 
+
 import streamlit as st
 import os
 from rag_system import ask
 from retrieve import search  # por si quieres hacer búsquedas directas
 from feedback_store import add_feedback, get_stats
- 
+
 # ------------------------------------------------------------------
 # Configuración de página
 # ------------------------------------------------------------------
@@ -23,7 +23,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
- 
+
 # ------------------------------------------------------------------
 # Estilos personalizados
 # ------------------------------------------------------------------
@@ -73,19 +73,19 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
- 
+
 # ------------------------------------------------------------------
 # Sidebar
 # ------------------------------------------------------------------
 with st.sidebar:
     st.markdown("### 🔎 Sistema RI Multimodal")
     st.caption("Recuperación de Información + RAG sobre texto e imágenes")
- 
+
     st.markdown("---")
     st.markdown("#### ⚙️ Parámetros de búsqueda")
- 
+
     top_k = st.slider("Documentos a recuperar (Top-k)", min_value=1, max_value=20, value=10)
- 
+
     query_type = st.radio(
         "Tipo de consulta",
         options=["text", "image"],
@@ -93,7 +93,7 @@ with st.sidebar:
         horizontal=True,
         help="Con 'Imagen' podrás subir una foto de referencia en vez de escribir texto.",
     )
- 
+
     st.markdown("---")
     st.markdown("#### ℹ️ Acerca del sistema")
     st.markdown(
@@ -103,14 +103,16 @@ with st.sidebar:
         - **Base de datos vectorial** para indexar y recuperar el corpus
         - **RAG** (Retrieval-Augmented Generation) para generar respuestas
           usando los productos recuperados como contexto
+        - **Memoria conversacional** de los últimos turnos
+        - **Relevance Feedback** (👍/👎) que ajusta futuras búsquedas
         """
     )
- 
+
     st.markdown("---")
     if st.button("🗑️ Limpiar conversación", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
- 
+
 # ------------------------------------------------------------------
 # Encabezado principal
 # ------------------------------------------------------------------
@@ -120,7 +122,7 @@ st.markdown(
     'relevante (texto + imágenes) y genera una respuesta a partir de ese contexto.</p>',
     unsafe_allow_html=True,
 )
- 
+
 # ------------------------------------------------------------------
 # Utilidad para mostrar evidencias
 # ------------------------------------------------------------------
@@ -172,13 +174,13 @@ def render_evidences(docs, msg_key):
                             st.rerun()
                     st.caption(f"👍{stats['likes']} · 👎{stats['dislikes']}")
                 st.markdown('</div>', unsafe_allow_html=True)
- 
+
 # ------------------------------------------------------------------
 # Estado / historial de la conversación
 # ------------------------------------------------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
- 
+
 # Mostrar mensajes anteriores
 for msg_idx, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
@@ -187,22 +189,19 @@ for msg_idx, msg in enumerate(st.session_state.messages):
         st.markdown(msg["content"])
         if msg.get("evidences"):
             render_evidences(msg["evidences"], msg_key=f"hist{msg_idx}")
- 
-# ------------------------------------------------------------------
-# Input del usuario
-# ------------------------------------------------------------------
+
 # ------------------------------------------------------------------
 # Input del usuario (texto o imagen, según el modo elegido en el sidebar)
 # ------------------------------------------------------------------
 prompt = None
 image_query_path = None
 display_content = None
- 
+
 if query_type == "text":
     prompt = st.chat_input("Escribe tu consulta sobre productos...")
     if prompt:
         display_content = prompt
- 
+
 else:  # query_type == "image"
     uploaded_file = st.file_uploader(
         "Sube una imagen de referencia (ej. una foto del producto que buscas)",
@@ -221,21 +220,27 @@ else:  # query_type == "image"
                 f.write(uploaded_file.getbuffer())
             image_query_path = temp_path
             display_content = f"🖼️ Imagen subida: {uploaded_file.name}"
- 
-# -------------------------------
+
+# ------------------------------------------------------------------
 # Memoria conversacional básica
-# -------------------------------
+# ------------------------------------------------------------------
 def build_memoria_context(messages, max_turns=3):
     """
-    Devuelve un string concatenado con los últimos turnos de usuario/asistente.
-    max_turns: cantidad de pares user-assistant a considerar.
+    Devuelve un string con los últimos `max_turns` pares usuario/asistente,
+    para dárselo al LLM como contexto de la conversación.
+
+    Importante: este texto SOLO se usa para la generación de la respuesta
+    (se lo pasamos a rag_system.ask() como `memory`). NUNCA se mezcla con
+    la query real que se embeddea para la búsqueda vectorial -- si se
+    metiera ahí, además de romper la búsqueda por imagen (la query dejaría
+    de ser una ruta de archivo), degradaría la calidad del embedding de
+    texto, ya que CLIP está pensado para captions cortas, no para
+    historiales de chat completos.
     """
     if not messages:
         return ""
     memo = []
-    # Solo los turnos previos completos (sin el mensaje actual que aún no se agrega)
-    # Considera solo mensajes finalizados (role user/assistant)
-    relevant_msgs = messages[-(max_turns*2):]  # últimos N pares
+    relevant_msgs = messages[-(max_turns * 2):]
     for m in relevant_msgs:
         if m["role"] == "user":
             memo.append(f"Usuario: {m['content']}")
@@ -243,18 +248,15 @@ def build_memoria_context(messages, max_turns=3):
             memo.append(f"Asistente: {m['content']}")
     return "\n".join(memo)
 
+
 if prompt or image_query_path:
+    # La memoria se calcula ANTES de agregar el turno actual (para no
+    # incluirse a sí misma), y se usa solo para la generación de respuesta.
     memoria_context = build_memoria_context(st.session_state.messages, max_turns=3)
 
-    if query_type == "text":
-        if memoria_context:
-            actual_query = memoria_context + f"\nUsuario: {prompt}"
-        else:
-            actual_query = prompt
-    else:
-        # Para queries de imagen, puedes pasar el historial solo como contexto para el modelo generativo
-        # o añadir un recordatorio textual adicional. Aquí lo pasamos por si el generador lo aprovecha.
-        actual_query = memoria_context if memoria_context else ""
+    # La query real para búsqueda es SIEMPRE el input actual (texto o ruta
+    # de imagen), sin mezclar memoria -- eso se pasa aparte a ask().
+    actual_query = prompt if query_type == "text" else image_query_path
 
     # Mensaje del usuario
     st.session_state.messages.append({
@@ -270,7 +272,12 @@ if prompt or image_query_path:
     with st.chat_message("assistant"):
         with st.spinner("Recuperando evidencia y generando respuesta..."):
             try:
-                response, docs = ask(actual_query, query_type=query_type, top_k=top_k)
+                response, docs = ask(
+                    actual_query,
+                    query_type=query_type,
+                    top_k=top_k,
+                    memory=memoria_context,
+                )
             except Exception as e:
                 response = f"⚠️ Ocurrió un error al procesar la consulta: {e}"
                 docs = []
@@ -287,5 +294,3 @@ if prompt or image_query_path:
 
         st.markdown(response)
         render_evidences(docs, msg_key=f"hist{new_msg_idx}")
-
- 
